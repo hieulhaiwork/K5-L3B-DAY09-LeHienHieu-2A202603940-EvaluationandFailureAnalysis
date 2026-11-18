@@ -16,6 +16,7 @@ from pathlib import Path
 from lab8.console import utf8_stdio
 from lab9 import stats
 from lab9.eval import SPEC, load_spec, per_item
+from lab9.stats import paired_bootstrap
 
 
 def integrity_check(pr: dict, base: dict, spec: dict, base_spec: dict | None = None) -> list[str]:
@@ -33,8 +34,42 @@ def integrity_check(pr: dict, base: dict, spec: dict, base_spec: dict | None = N
         including dropping no_significant_drop)
       - an item's slice tags in PR rows differ from the baseline's (relabelling an item out of a
         slice hides its regression from the slice gate)"""
-    # TODO M7
-    return []
+    blocks = []
+    pr_rows = pr.get("rows", [])
+    base_rows = base.get("rows", [])
+    
+    pr_trials = {(r.get("item_id"), r.get("seed")) for r in pr_rows}
+    base_trials = {(r.get("item_id"), r.get("seed")) for r in base_rows}
+    
+    if pr_trials != base_trials:
+        blocks.append("INTEGRITY: Tập (item_id, seed) bị thay đổi so với baseline.")
+        
+    if pr.get("evaluator_failures"):
+        blocks.append("INTEGRITY: Tồn tại evaluator_failures trong báo cáo PR.")
+        
+    for row in pr_rows:
+        if any(v is None for k, v in row.items() if k not in ["item_id", "seed", "slices"]):
+            blocks.append(f"INTEGRITY: Phát hiện giá trị NaN/None ở item {row.get('item_id')}.")
+            break
+            
+    if base_spec:
+        pr_metrics = {m["id"]: m for m in spec.get("metrics", [])}
+        base_metrics = {m["id"]: m for m in base_spec.get("metrics", [])}
+        
+        for m_id, b_m in base_metrics.items():
+            if m_id in pr_metrics:
+                p_m = pr_metrics[m_id]
+                # Nếu metric là blocking, không cho phép ngưỡng min mới thấp hơn ngưỡng min cũ
+                b_min = b_m.get("threshold", {}).get("min")
+                p_min = p_m.get("threshold", {}).get("min")
+                if b_m.get("blocking") and b_min is not None and p_min is not None:
+                    if p_min < b_min:
+                        blocks.append(f"INTEGRITY: Ngưỡng {m_id} bị nới lỏng ({p_min} < {b_min}).")
+                        
+    if len(pr_rows) != len(base_rows):
+        blocks.append("INTEGRITY: Số lượng dòng không khớp.")
+
+    return blocks
 
 
 def slice_check(pr: dict, base: dict, spec: dict) -> tuple[list[str], list[str]]:
@@ -44,8 +79,38 @@ def slice_check(pr: dict, base: dict, spec: dict) -> tuple[list[str], list[str]]
       - fail if below "min", or if no_significant_drop and the paired CI over the slice's items
         lies entirely below 0
     Return (blocked ids like "slice:money_movement/pass_rate", report lines)."""
-    # TODO M5
-    return [], []
+    blocks = []
+    
+    blocking_metrics = [m for m in spec.get("metrics", []) if m.get("blocking") and m.get("kind") == "capability"]
+    
+    pr_rows = pr.get("rows", [])
+    base_rows = base.get("rows", [])
+    
+    all_slices = set()
+    for row in pr_rows:
+        all_slices.update(row.get("slices", []))
+        
+    for slice_name in all_slices:
+        pr_slice = [r for r in pr_rows if slice_name in r.get("slices", [])]
+        base_slice = [r for r in base_rows if slice_name in r.get("slices", [])]
+        
+        if not pr_slice or len(pr_slice) != len(base_slice):
+            continue
+            
+        for metric in blocking_metrics:
+            m_id = metric["id"]
+            if m_id not in pr_slice[0]:
+                continue
+                
+            pr_scores = [r[m_id] for r in pr_slice]
+            base_scores = [r[m_id] for r in base_slice]
+            
+            _, ci_low, ci_high = paired_bootstrap(pr_scores, base_scores)
+            
+            if ci_high < -0.01:
+                blocks.append(f"SLICE BLOCK: Lát cắt '{slice_name}' rớt điểm '{m_id}' (CI_high: {ci_high:.3f})")
+                
+    return blocks
 
 
 def check(pr: dict, base: dict, spec: dict, base_spec: dict | None = None) -> tuple[list[str], list[str]]:
