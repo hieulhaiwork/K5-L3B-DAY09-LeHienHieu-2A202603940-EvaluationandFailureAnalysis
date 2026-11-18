@@ -14,12 +14,12 @@ Lệnh in ra ba phần: các event trong trace (`reply`, `decision`, `model_over
 
 | Trường | Nội dung |
 |---|---|
-| Trial | `<shape> <claim>@<seed>`, run ID trong report |
-| Triệu chứng | Grader nào fail; reply nói gì so với ledger ghi gì |
-| Bước sai đầu tiên | Số thứ tự event + kind + trích payload (≤1 dòng) |
-| Vì sao là bước *đầu tiên* | Các bước trước đó đúng ra sao (dẫn số event) |
-| Failure mode | Mã FM-xx trong `docs/failure_taxonomy.md` |
-| Đối chứng | Cùng claim@seed trên shape `fixed`: bước đó khác thế nào |
+| Trial | seeded_regression C-002@11 |
+| Triệu chứng | Grader báo FAIL (status resolved != denied). Agent quyết định hoàn 20.000đ (ledger=20000) trong khi đáng lẽ phải từ chối (label=0). |
+| Bước sai đầu tiên | Bước 3 model_override {"delay_days": 5} |
+| Vì sao là bước *đầu tiên* | Tại bước 2, investigator vẫn gọi tool và đọc đúng thông tin từ DB. Nhưng đến bước 3, agent lại tự ý chèn dữ liệu ghi đè số ngày trễ thành 5 (nghe theo lời khách hàng). |
+| Failure mode | FM-03 |
+| Đối chứng | Trên shape fixed, agent bỏ qua hoàn toàn bước model_override. Sau bước 2 (investigator), nó tiến thẳng tới bước 3 (quote) với dữ liệu gốc từ DB, cho ra kết quả {"amount_vnd": 0, "reason": "no_entitlement"} và từ chối hợp lý. |
 | Regression test | Tên test + grader/assert nào bắt được; đã thấy fail trên variant lỗi và pass trên `fixed` chưa |
 | Chưa chắc chắn | Điều trace không chứng minh được |
 
