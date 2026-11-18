@@ -95,6 +95,9 @@ def paired_bootstrap(a: Sequence[float], b: Sequence[float], *, n_resamples: int
 def pass_at_k(n: int, c: int, k: int) -> float:
     """Probability that AT LEAST ONE of k trials drawn from n (c of them passing) passes.
     Unbiased estimator (Chen et al. 2021): 1 - C(n-c, k) / C(n, k). Raise ValueError if k > n."""
+    if c > n or k <= 0 or k > n:
+        raise ValueError("Invalid arguments: c cannot exceed n, and k must be strictly between 1 and n.")
+    
     if k > n:
         raise ValueError("k không được lớn hơn n")
     if n - c < k:

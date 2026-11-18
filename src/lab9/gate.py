@@ -12,6 +12,8 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import math
+import numpy as np
 
 from lab8.console import utf8_stdio
 from lab9 import stats
@@ -69,6 +71,10 @@ def integrity_check(pr: dict, base: dict, spec: dict, base_spec: dict | None = N
     if len(pr_rows) != len(base_rows):
         blocks.append("INTEGRITY: Số lượng dòng không khớp.")
 
+    pr_metrics_dict = pr.get("metrics", {})
+    if any(v is None or (isinstance(v, float) and math.isnan(v)) for v in pr_metrics_dict.values()):
+         blocks.append("INTEGRITY: Có giá trị NaN hoặc None trong metrics tổng.")
+
     return blocks
 
 
@@ -80,37 +86,51 @@ def slice_check(pr: dict, base: dict, spec: dict) -> tuple[list[str], list[str]]
         lies entirely below 0
     Return (blocked ids like "slice:money_movement/pass_rate", report lines)."""
     blocks = []
+    lines = []
     
-    blocking_metrics = [m for m in spec.get("metrics", []) if m.get("blocking") and m.get("kind") == "capability"]
-    
+    spec_slices = spec.get("slices", [])
     pr_rows = pr.get("rows", [])
     base_rows = base.get("rows", [])
     
-    all_slices = set()
-    for row in pr_rows:
-        all_slices.update(row.get("slices", []))
+    for slice_def in spec_slices:
+        slice_name = slice_def.get("name")
+        m_id = slice_def.get("metric")
+        min_threshold = slice_def.get("min")
+        is_blocking = slice_def.get("blocking")
+        check_drop = slice_def.get("no_significant_drop")
         
-    for slice_name in all_slices:
         pr_slice = [r for r in pr_rows if slice_name in r.get("slices", [])]
         base_slice = [r for r in base_rows if slice_name in r.get("slices", [])]
         
-        if not pr_slice or len(pr_slice) != len(base_slice):
+        if not pr_slice:
             continue
             
-        for metric in blocking_metrics:
-            m_id = metric["id"]
-            if m_id not in pr_slice[0]:
-                continue
-                
-            pr_scores = [r[m_id] for r in pr_slice]
-            base_scores = [r[m_id] for r in base_slice]
+        # Lấy điểm và tính trung bình (mean) cho PR
+        pr_scores = [float(r[m_id]) for r in pr_slice]
+        mean_val = np.mean(pr_scores)
+        
+        block_id = f"slice:{slice_name}/{m_id}"
+        
+        # 1. Kiểm tra ngưỡng sàn (min)
+        if min_threshold is not None and mean_val < min_threshold:
+            if is_blocking:
+                blocks.append(block_id)
+            lines.append(f"  {block_id:<22} dưới sàn ({mean_val:.3f} < {min_threshold})")
+            continue
             
-            _, ci_low, ci_high = paired_bootstrap(pr_scores, base_scores)
+        # 2. Kiểm tra sụt giảm đáng kể (nếu được yêu cầu)
+        if check_drop and len(pr_slice) == len(base_slice):
+            base_scores = [float(r[m_id]) for r in base_slice]
+            _, ci_low, ci_high = stats.paired_bootstrap(pr_scores, base_scores)
             
-            if ci_high < -0.01:
-                blocks.append(f"SLICE BLOCK: Lát cắt '{slice_name}' rớt điểm '{m_id}' (CI_high: {ci_high:.3f})")
+            if ci_high < 0:
+                if is_blocking:
+                    blocks.append(block_id)
+                lines.append(f"  {block_id:<22} rớt điểm (CI_high: {ci_high:+.3f})")
+            else:
+                lines.append(f"  {block_id:<22} ok")
                 
-    return blocks
+    return blocks, lines
 
 
 def check(pr: dict, base: dict, spec: dict, base_spec: dict | None = None) -> tuple[list[str], list[str]]:
