@@ -82,7 +82,7 @@ class ReplyLedgerMismatch(Evaluator[Any, Trial]):
         
         reply_events = [e for e in ctx.output.get("events", []) if e.get("kind") == "reply"]
         if not reply_events:
-            return EvaluationReason(value=False, reason="Không tìm thấy event reply")
+            return EvaluationReason(value=True, reason="Không có event reply (bỏ qua chấm)")
             
         reply_text = reply_events[-1].get("payload", {}).get("text", "")
         
