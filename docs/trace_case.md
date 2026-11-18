@@ -20,8 +20,8 @@ Lệnh in ra ba phần: các event trong trace (`reply`, `decision`, `model_over
 | Vì sao là bước *đầu tiên* | Tại bước 2, investigator vẫn gọi tool và đọc đúng thông tin từ DB. Nhưng đến bước 3, agent lại tự ý chèn dữ liệu ghi đè số ngày trễ thành 5 (nghe theo lời khách hàng). |
 | Failure mode | FM-03 |
 | Đối chứng | Trên shape fixed, agent bỏ qua hoàn toàn bước model_override. Sau bước 2 (investigator), nó tiến thẳng tới bước 3 (quote) với dữ liệu gốc từ DB, cho ra kết quả {"amount_vnd": 0, "reason": "no_entitlement"} và từ chối hợp lý. |
-| Regression test | Tên test + grader/assert nào bắt được; đã thấy fail trên variant lỗi và pass trên `fixed` chưa |
-| Chưa chắc chắn | Điều trace không chứng minh được |
+| Regression test | Grader `db_fact_kept` đã bắt được lỗi này. Đã thấy test chạy fail (`BLOCK`) trên nhánh lỗi và pass (`ok`) trên `fixed`. |
+| Chưa chắc chắn | Trace không chứng minh được nguyên nhân cốt lõi tại sao LLM lại bị thiên kiến (bias) nặng bởi prompt của người dùng dù system prompt đã dặn phải kiểm tra DB. |
 
 ## Quy tắc
 
